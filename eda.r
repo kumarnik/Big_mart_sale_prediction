@@ -227,8 +227,64 @@ full$Item_MRP_clusters = as.factor(Item_MRP_clusters$cluster)
 #                                    ifelse(Item_MRP >= 69 & Item_MRP < 136, "2nd",
 #                                           ifelse(Item_MRP >= 136 & Item_MRP < 203, "3rd", "4th")))]
 
+#Preprocessing
+## Label Encoding
+
+full[,Outlet_Size_num := ifelse(Outlet_Size == "Small", 0,
+                                 ifelse(Outlet_Size == "Medium", 1, 2))]
+
+full[,Outlet_Location_Type_num := ifelse(Outlet_Location_Type == "Tier 3", 0,
+                                          ifelse(Outlet_Location_Type == "Tier 2", 1, 2))]
+
+# removing categorical variables after label encoding
+full[, c("Outlet_Size", "Outlet_Location_Type") := NULL]
+
+#-------------------------------------------------------------------------------------------------------------------------
+
+## One Hot Encoding
+
+ohe = dummyVars("~.", data = full[,-c("Item_Identifier", "Outlet_Establishment_Year", "Item_Type")], fullRank = T)
+ohe_df = data.table(predict(ohe, full[,-c("Item_Identifier", "Outlet_Establishment_Year", "Item_Type")]))
+
+full = cbind(full[,"Item_Identifier"], ohe_df)
+
+## Remove skewness
+library(e1071) 
+skewness(full$Item_Visibility) 
+skewness(full$price_per_unit_wt)
+
+full[,Item_Visibility := log(Item_Visibility + 1)] # log + 1 to avoid division by zero
+full[,price_per_unit_wt := log(price_per_unit_wt + 1)]
+
+#-------------------------------------------------------------------------------------------------------------------------
+## Scaling and Centering data
+
+num_vars = which(sapply(full, is.numeric)) # index of numeric features
+num_vars_names = names(num_vars)
+
+full_numeric = full[,setdiff(num_vars_names, "Item_Outlet_Sales"), with = F]
+
+?preProcess
+prep_num = preProcess(full_numeric, method=c("center", "scale"))
+full_numeric_norm = predict(prep_num, full_numeric)
+
+#-------------------------------------------------------------------------------------------------------------------------
+
+full[,setdiff(num_vars_names, "Item_Outlet_Sales") := NULL] # removing numeric independent variables
+full= cbind(full, full_numeric_norm)
 
 
+
+
+## splitting data back to train and test
+train = full[1:nrow(train)]
+test = full[(nrow(train) + 1):nrow(full)]
+test[,Item_Outlet_Sales := NULL] # removing Item_Outlet_Sales as it contains only NA for test dataset
+
+## Correlation Plot
+cor_train = cor(train[,-c("Item_Identifier")])
+
+corrplot(cor_train, method = "pie", type = "lower", tl.cex = 0.9)
 
 
 
